@@ -5,6 +5,8 @@ import sys
 import torch
 import torch.nn as nn
 import math 
+from src.models.transformer.text_transformers import text_predictor , text_transformer_tiny
+
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger() 
 
@@ -127,40 +129,86 @@ def load_checkpoint(
     
 def init_model(
     device,
-    patch_size=16,
-    model_name='vit_base',
-    crop_size=64,
-    pred_depth=6,
-    pred_emb_dim=384
+    model_name="text_transformer",
+    vocab_size=50257,
+    max_seq_len=512,
+    embed_dim=512,
+    depth=6,
+    num_heads=8,
+    pred_depth=4,
+    pred_emb_dim=384,
 ):
-    encoder = vit.__dict__[model_name](
-        img_size=[crop_size],
-        patch_size=patch_size)
-    predictor = vit.__dict__['vit_predictor'](
-        num_patchs=encoder.patch_embed.num_patches,
-        embed_dim=encoder.embed_dim,
-        pred_embed_dim =pred_emb_dim,
-        depth=pred_depth,
-        num_heads=encoder.num_heads)
+    """
+    Initialize Text-JEPA encoder and predictor.
 
+    Args:
+        device: torch.device
+        model_name: kept for API compatibility (not used internally)
+        vocab_size: tokenizer vocabulary size
+        max_seq_len: maximum number of tokens per sequence
+        embed_dim: encoder embedding dimension
+        depth: encoder transformer depth
+        num_heads: attention heads
+        pred_depth: predictor transformer depth
+        pred_emb_dim: predictor embedding dimension
+
+    Returns:
+        encoder, predictor
+    """
+
+    # --------------------------------------------------
+    # Encoder (context encoder)
+    # --------------------------------------------------
+    encoder = text_transformer_tiny(
+        vocab_size=vocab_size,
+        max_seq_len=max_seq_len,
+        embed_dim=embed_dim,
+        depth=depth,
+        num_heads=num_heads
+    )
+
+    # --------------------------------------------------
+    # Predictor (masked target predictor)
+    # --------------------------------------------------
+    predictor = text_predictor(
+        embed_dim=embed_dim,
+        pred_embed_dim=pred_emb_dim,
+        depth=pred_depth,
+        num_heads=num_heads,
+    )
+
+    # --------------------------------------------------
+    # Weight initialization (ViT / JEPA style)
+    # --------------------------------------------------
     def init_weights(m):
         if isinstance(m, torch.nn.Linear):
             trunc_normal_(m.weight, std=0.02)
             if m.bias is not None:
                 torch.nn.init.constant_(m.bias, 0)
+
         elif isinstance(m, torch.nn.LayerNorm):
             torch.nn.init.constant_(m.bias, 0)
             torch.nn.init.constant_(m.weight, 1.0)
 
-    for m in encoder.modules():
-        init_weights(m)
+        elif isinstance(m, torch.nn.Embedding):
+            trunc_normal_(m.weight, std=0.02)
 
-    for m in predictor.modules():
-        init_weights(m)
+    encoder.apply(init_weights)
+    predictor.apply(init_weights)
 
+    # --------------------------------------------------
+    # Move to device
+    # --------------------------------------------------
     encoder.to(device)
     predictor.to(device)
-    logger.info(encoder)
+
+    logger.info("Initialized T-JEPA model")
+    logger.info(f"Vocab size      : {vocab_size}")
+    logger.info(f"Max seq length  : {max_seq_len}")
+    logger.info(f"Embed dim      : {embed_dim}")
+    logger.info(f"Encoder depth  : {depth}")
+    logger.info(f"Predictor depth: {pred_depth}")
+
     return encoder, predictor
 
 

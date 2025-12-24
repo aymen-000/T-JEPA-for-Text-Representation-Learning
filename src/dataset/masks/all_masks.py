@@ -63,7 +63,6 @@ class TextMutiBlockMaskCollector:
                 masks_e.append(mask)
             collated_masks_enc.append(masks_e)
 
-        # Keep masks as lists to handle variable lengths
         return collated_batch, collated_masks_enc, collated_masks_pred
 
 

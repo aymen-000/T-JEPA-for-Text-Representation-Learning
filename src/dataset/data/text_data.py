@@ -4,6 +4,7 @@ from logging import getLogger
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 from datasets import load_dataset
+from src.dataset.masks.all_masks import TextMutiBlockMaskCollector
 
 logger = getLogger()
 
@@ -79,16 +80,22 @@ def make_textjepa(
     )
 
     logger.info('Text-JEPA DataLoader created')
-    return dataset, data_loader
-
-
-# Example collator for Text-JEPA: simply returns list of strings
-def simple_collator(batch):
-    return batch
+    return data_loader , dataset
 
 
 # Example usage
 if __name__ == "__main__":
+    logger.info('Initializing mask collator...')
+    mask_collator = TextMutiBlockMaskCollector(
+            max_tokens=128, 
+            nenc=1 ,
+            npred=2,
+            enc_mask_scale=[0.65, 0.85],
+            pred_mask_scale=[0.10, 0.25] ,
+            min_keep=4 ,
+            allow_overlap=False
+    )
+
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
@@ -97,15 +104,21 @@ if __name__ == "__main__":
         return tokenizer(text, truncation=True, padding='max_length', max_length=128, return_tensors='pt')['input_ids'].squeeze(0)
 
     # Create dataset and dataloader
-    dataset, data_loader = make_textjepa(
+    loader, sampler = make_textjepa(
         batch_size=16,
-        collator=simple_collator,
+        collator=mask_collator,
         transform=tokenize,
         fraction=0.1,  # use 10% for quick test
         max_length=128
     )
 
     # Print sample batch
-    batch = next(iter(data_loader))
-    print(f"Batch size: {len(batch)}")
-    print(f"First tokenized sample shape: {batch[0].shape}")
+    # Example debug
+    batch = next(iter(loader) )
+    tokens, masks_enc, masks_pred = batch
+    print("mask_enc ========>" , masks_enc[0])
+    print("============")
+    print("mesk_decoer ====>" , masks_pred[0])
+    print("==================")
+    print("tokens ========> " , tokens[0])
+    print(tokens.shape, len(masks_enc), len(masks_pred))

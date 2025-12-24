@@ -1,78 +1,158 @@
-# =============================================================================
-# T-JEPA Configuration — Text Joint Embedding Predictive Architecture
-# Dataset: TinyStories
-# =============================================================================
+# Text-JEPA Configuration
+# Self-supervised learning for text using I-JEPA methodology
 
+# =============================================================================
+# META CONFIGURATION
+# =============================================================================
 meta:
-  task: text                       # image | text
-  use_bfloat16: false              # safer on consumer GPUs
-  model_name: bert-base-uncased    # encoder backbone
-  load_checkpoint: false
-  read_checkpoint: null
-  copy_data: false
-
-  # Predictor (JEPA head)
-  pred_depth: 4
-  pred_emb_dim: 768                # must match encoder hidden size
+  use_bfloat16: true  # Mixed precision training
+  model_name: 'text_transformer_small'  # text_transformer_tiny, small, base, large
+  load_checkpoint: false  # Set to true to resume training
+  read_checkpoint: null  # Path to checkpoint if resuming
+  pred_depth: 6  # Predictor depth (layers)
+  pred_emb_dim: 192  # Predictor embedding dimension
 
 # =============================================================================
 # DATA CONFIGURATION
 # =============================================================================
 data:
-  dataset_name: roneneldan/TinyStories
-  dataset_split: train
-
-  max_tokens: 128                  # sequence length
-  batch_size: 64
-  num_workers: 4
-  pin_mem: true
-
-  # Tokenization
-  tokenizer_name: bert-base-uncased
-  padding: false                   # variable-length sequences
-  truncation: true
-
-  # Optional dataset reduction
-  use_subset: false
-  subset_fraction: 0.1             # use if debugging
+  # Text-specific parameters
+  vocab_size: 30522  # BERT vocabulary size
+  max_seq_len: 512  # Maximum sequence length
+  
+  # Training parameters
+  batch_size: 32  # Batch size
+  num_workers: 4  # DataLoader workers
+  
+  # Dataset path (depends on your data loader implementation)
+  dataset_name: 'wikitext'  # or 'bookcorpus', 'openwebtext', etc.
+  dataset_path: null  # Path to dataset if using local files
 
 # =============================================================================
-# TEXT MASKING CONFIGURATION (JEPA-STYLE)
+# MASKING CONFIGURATION (Text-specific)
 # =============================================================================
 mask:
-  strategy: multiblock             # multiblock | random
-
-  # Context (encoder-visible tokens)
-  num_enc_masks: 1
-  enc_mask_scale: [0.6, 0.8]       # % of tokens kept as context
-  min_keep: 8
-
-  # Target (predictor-visible tokens)
-  num_pred_masks: 2
-  pred_mask_scale: [0.15, 0.25]    # % of tokens to predict
-
-  allow_overlap: false             # context ≠ target
+  max_tokens: 512  # Maximum tokens to process (same as max_seq_len)
+  
+  # Context masks (visible tokens)
+  num_enc_masks: 1  # Number of context blocks
+  enc_mask_scale: [0.65, 0.85]  # Context block size (65-85% of sequence)
+  
+  # Target masks (tokens to predict)
+  num_pred_masks: 2  # Number of target blocks
+  pred_mask_scale: [0.10, 0.25]  # Target block size (10-25% of sequence)
+  
+  min_keep: 32  # Minimum tokens to keep in context
+  allow_overlap: false  # Whether context and target can overlap
 
 # =============================================================================
-# OPTIMIZATION
+# OPTIMIZATION CONFIGURATION
 # =============================================================================
 optimization:
-  epochs: 50
-  warmup: 5
-
-  start_lr: 1.0e-6
-  lr: 3.0e-5                       # standard for BERT-like models
-  final_lr: 1.0e-6
-
-  weight_decay: 0.01
-  final_weight_decay: 0.05
-
-  ema: [0.996, 1.0]
-  ipe_scale: 1.0
+  # Training schedule
+  epochs: 100  # Total epochs
+  warmup: 10  # Warmup epochs
+  
+  # Learning rates
+  start_lr: 1.0e-6  # Warmup start learning rate
+  lr: 5.0e-5  # Base learning rate (lower for text than images)
+  final_lr: 1.0e-6  # Final learning rate
+  
+  # Regularization
+  weight_decay: 0.05  # L2 regularization
+  final_weight_decay: 0.05  # Final weight decay
+  
+  # EMA (Exponential Moving Average) for target encoder
+  ema: [0.996, 1.0]  # [start_ema, end_ema]
+  
+  # Scheduler
+  ipe_scale: 1.0  # Iterations per epoch scale factor
 
 # =============================================================================
-# LOGGING
+# LOGGING CONFIGURATION
 # =============================================================================
 logging:
-  folder: ./outputs
-  write_tag: t_jepa_tinystories
+  folder: './outputs/text_jepa'  # Output directory
+  write_tag: 'text_jepa_experiment'  # Experiment name
+
+# =============================================================================
+# NOTES & TIPS
+# =============================================================================
+
+# Model Sizes:
+# - text_transformer_tiny: ~5M params, embed_dim=192
+# - text_transformer_small: ~22M params, embed_dim=384
+# - text_transformer_base: ~86M params, embed_dim=768 (BERT-base size)
+# - text_transformer_large: ~340M params, embed_dim=1024 (BERT-large size)
+
+# Masking Strategy for Text:
+# Unlike images (2D spatial masking), text uses 1D sequential masking:
+# - Context: Contiguous span of visible tokens (e.g., first 400 tokens)
+# - Target: Tokens to predict (e.g., tokens 400-500)
+# - Similar to span masking in SpanBERT, but with I-JEPA's predictor
+
+# Learning Rate for Text:
+# Text models typically use lower learning rates than vision models:
+# - Tiny/Small: 5e-5 to 1e-4
+# - Base: 3e-5 to 5e-5
+# - Large: 1e-5 to 3e-5
+
+# Batch Size Recommendations:
+# - For max_seq_len=512:
+#   - Tiny (192 dim): batch_size=64-128
+#   - Small (384 dim): batch_size=32-64
+#   - Base (768 dim): batch_size=16-32
+#   - Large (1024 dim): batch_size=8-16
+
+# GPU Memory Usage (approximate):
+# - Tiny + batch_size=64: ~4GB
+# - Small + batch_size=32: ~6GB
+# - Base + batch_size=16: ~8GB
+# - Large + batch_size=8: ~12GB
+
+# Datasets:
+# Popular options for self-supervised text learning:
+# - WikiText-103: Medium-sized, clean text
+# - BookCorpus: Books (used in BERT)
+# - OpenWebText: Web pages (GPT-2 style)
+# - C4: Colossal Clean Crawled Corpus
+# - Your domain-specific corpus (medical, legal, code, etc.)
+
+# =============================================================================
+# ALTERNATIVE CONFIGS FOR DIFFERENT USE CASES
+# =============================================================================
+
+# For Quick Experimentation (4GB GPU):
+# meta:
+#   model_name: 'text_transformer_tiny'
+#   pred_depth: 4
+#   pred_emb_dim: 96
+# data:
+#   batch_size: 64
+#   max_seq_len: 256
+# optimization:
+#   epochs: 50
+
+# For Medical/Legal Text (domain-specific):
+# data:
+#   vocab_size: 50000  # Custom tokenizer with domain vocab
+#   max_seq_len: 1024  # Longer sequences for documents
+# mask:
+#   enc_mask_scale: [0.70, 0.90]  # More context
+#   pred_mask_scale: [0.05, 0.15]  # Less target
+
+# For Code/Programming Text:
+# data:
+#   max_seq_len: 1024  # Longer for code files
+# mask:
+#   enc_mask_scale: [0.60, 0.80]
+#   pred_mask_scale: [0.15, 0.30]  # Larger targets for code blocks
+#   allow_overlap: true  # Code has high redundancy
+
+# For Short Text (tweets, reviews):
+# data:
+#   max_seq_len: 128
+# mask:
+#   min_keep: 16
+#   enc_mask_scale: [0.50, 0.70]
+#   pred_mask_scale: [0.20, 0.40]

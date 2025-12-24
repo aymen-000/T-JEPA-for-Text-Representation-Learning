@@ -289,66 +289,62 @@ def text_predictor(**kwargs):
     return model
 
 
-def text_transformer_tiny(vocab_size=30522, max_seq_len=512, **kwargs):
+def text_transformer_tiny(vocab_size=30522, max_seq_len=512, embed_dim=192 ,depth=12 ,num_heads=3  ):
     """Tiny text transformer (5M params)"""
     model = TextTransformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
-        embed_dim=192,
-        depth=12,
-        num_heads=3,
+        embed_dim=embed_dim,
+        depth=depth,
+        num_heads=num_heads,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        **kwargs
     )
     return model
 
 
-def text_transformer_small(vocab_size=30522, max_seq_len=512, **kwargs):
+def text_transformer_small(vocab_size=30522, max_seq_len=512, embed_dim =384 ,depth=12 ,num_heads=6 ):
     """Small text transformer (22M params)"""
     model = TextTransformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
-        embed_dim=384,
-        depth=12,
-        num_heads=6,
+        embed_dim=embed_dim,
+        depth=depth,
+        num_heads=num_heads,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        **kwargs
     )
     return model
 
 
-def text_transformer_base(vocab_size=30522, max_seq_len=512, **kwargs):
+def text_transformer_base(vocab_size=30522, max_seq_len=512, embed_dim =768 ,depth=12 ,num_heads=12 ):
     """Base text transformer (86M params) - similar to BERT-base"""
     model = TextTransformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
+        embed_dim=embed_dim,
+        depth=depth,
+        num_heads=num_heads,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        **kwargs
     )
     return model
 
 
-def text_transformer_large(vocab_size=30522, max_seq_len=512, **kwargs):
+def text_transformer_large(vocab_size=30522, max_seq_len=512, embed_dim =1024 ,depth=24 ,num_heads=16 ):
     """Large text transformer (340M params) - similar to BERT-large"""
     model = TextTransformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
-        embed_dim=1024,
-        depth=24,
-        num_heads=16,
+        embed_dim=embed_dim,
+        depth=depth,
+        num_heads=num_heads,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        **kwargs
     )
     return model
 

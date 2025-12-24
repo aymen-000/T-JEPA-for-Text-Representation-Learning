@@ -1,0 +1,78 @@
+# =============================================================================
+# T-JEPA Configuration — Text Joint Embedding Predictive Architecture
+# Dataset: TinyStories
+# =============================================================================
+
+meta:
+  task: text                       # image | text
+  use_bfloat16: false              # safer on consumer GPUs
+  model_name: bert-base-uncased    # encoder backbone
+  load_checkpoint: false
+  read_checkpoint: null
+  copy_data: false
+
+  # Predictor (JEPA head)
+  pred_depth: 4
+  pred_emb_dim: 768                # must match encoder hidden size
+
+# =============================================================================
+# DATA CONFIGURATION
+# =============================================================================
+data:
+  dataset_name: roneneldan/TinyStories
+  dataset_split: train
+
+  max_tokens: 128                  # sequence length
+  batch_size: 64
+  num_workers: 4
+  pin_mem: true
+
+  # Tokenization
+  tokenizer_name: bert-base-uncased
+  padding: false                   # variable-length sequences
+  truncation: true
+
+  # Optional dataset reduction
+  use_subset: false
+  subset_fraction: 0.1             # use if debugging
+
+# =============================================================================
+# TEXT MASKING CONFIGURATION (JEPA-STYLE)
+# =============================================================================
+mask:
+  strategy: multiblock             # multiblock | random
+
+  # Context (encoder-visible tokens)
+  num_enc_masks: 1
+  enc_mask_scale: [0.6, 0.8]       # % of tokens kept as context
+  min_keep: 8
+
+  # Target (predictor-visible tokens)
+  num_pred_masks: 2
+  pred_mask_scale: [0.15, 0.25]    # % of tokens to predict
+
+  allow_overlap: false             # context ≠ target
+
+# =============================================================================
+# OPTIMIZATION
+# =============================================================================
+optimization:
+  epochs: 50
+  warmup: 5
+
+  start_lr: 1.0e-6
+  lr: 3.0e-5                       # standard for BERT-like models
+  final_lr: 1.0e-6
+
+  weight_decay: 0.01
+  final_weight_decay: 0.05
+
+  ema: [0.996, 1.0]
+  ipe_scale: 1.0
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  folder: ./outputs
+  write_tag: t_jepa_tinystories

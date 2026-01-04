@@ -365,14 +365,13 @@ def main(args, resume_preempt=False):
             pred_meter.update(avg_mask_len(masks_pred))
 
             def train_step():
-                _new_lr = scheduler.step()
-                _new_wd = wd_scheduler.step()
+
 
                 # Forward target encoder (no gradients)
                 with torch.no_grad():
                     h = target_encoder(tokens)
                     h = F.layer_norm(h, (h.size(-1),))
-                    B = len(h)
+                    B = tokens.size(0) # i modified this 
                     # Apply target masks
                     h = apply_masks(h, masks_pred)
                     h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
@@ -381,7 +380,7 @@ def main(args, resume_preempt=False):
                 with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
                     z = encoder(tokens, masks_enc)
                     z = predictor(z, masks_enc, masks_pred)
-                    loss = F.smooth_l1_loss(z, h)
+                    loss = 1 - F.cosine_similarity(z, h, dim=-1).mean()  # i modified this 
 
                 # Backward pass
                 optimizer.zero_grad()
@@ -392,9 +391,17 @@ def main(args, resume_preempt=False):
                 else:
                     loss.backward()
                     optimizer.step()
+                    _new_lr = scheduler.step()  # i modified this 
+                    _new_wd = wd_scheduler.step()  # i modified this 
 
                 # Get gradient stats
                 grad_stats = grad_logger(encoder.named_parameters())
+                
+                with torch.no_grad():
+                    z_std = z.std(dim=0).mean().item()
+                    h_std = h.std(dim=0).mean().item()
+
+                logger.info(f"z_std={z_std:.4f}, h_std={h_std:.4f}")
 
                 # EMA update of target encoder
                 with torch.no_grad():
@@ -421,6 +428,8 @@ def main(args, resume_preempt=False):
                     f'mem: {torch.cuda.max_memory_allocated() / 1024.**2 if torch.cuda.is_available() else 0:.0f}MB | '
                     f'time: {time_meter.avg:.1f}ms'
                 )
+
+
                 
                 if grad_stats is not None:
                     logger.info(

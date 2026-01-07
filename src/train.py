@@ -365,13 +365,11 @@ def main(args, resume_preempt=False):
             pred_meter.update(avg_mask_len(masks_pred))
 
             def train_step():
-
-
                 # Forward target encoder (no gradients)
                 with torch.no_grad():
                     h = target_encoder(tokens)
                     h = F.layer_norm(h, (h.size(-1),))
-                    B = tokens.size(0) # i modified this 
+                    B = tokens.size(0)
                     # Apply target masks
                     h = apply_masks(h, masks_pred)
                     h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
@@ -380,7 +378,7 @@ def main(args, resume_preempt=False):
                 with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
                     z = encoder(tokens, masks_enc)
                     z = predictor(z, masks_enc, masks_pred)
-                    loss = 1 - F.cosine_similarity(z, h, dim=-1).mean()  # i modified this 
+                    loss = 1 - F.cosine_similarity(z, h, dim=-1).mean()
 
                 # Backward pass
                 optimizer.zero_grad()
@@ -391,8 +389,10 @@ def main(args, resume_preempt=False):
                 else:
                     loss.backward()
                     optimizer.step()
-                    _new_lr = scheduler.step()  # i modified this 
-                    _new_wd = wd_scheduler.step()  # i modified this 
+                
+                # Step schedulers (moved outside the if/else)
+                _new_lr = scheduler.step()
+                _new_wd = wd_scheduler.step()
 
                 # Get gradient stats
                 grad_stats = grad_logger(encoder.named_parameters())

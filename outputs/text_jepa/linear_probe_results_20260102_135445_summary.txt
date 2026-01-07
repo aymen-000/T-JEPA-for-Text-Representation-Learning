@@ -1,0 +1,21 @@
+================================================================================
+TEXT-JEPA LINEAR PROBING SUMMARY
+================================================================================
+
+Date: 2026-01-02 18:56:09
+Total Epochs: 20
+Best Validation Accuracy: 26.38%
+
+Configuration:
+  encoder_path: outputs/text_jepa/text_jepa_experiment-final.pth.tar
+  config_path: config/config.yaml
+  model_name: bert-base-uncased
+  vocab_size: 30522
+  embed_dim: 512
+  encoder_depth: 6
+  batch_size: 64
+  learning_rate: 0.001
+  num_epochs: 20
+  num_classes: 4
+
+================================================================================

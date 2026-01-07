@@ -6,7 +6,7 @@
 # =============================================================================
 meta:
   use_bfloat16: true  # Mixed precision training
-  model_name: 'text_transformer_small'  # text_transformer_tiny, small, base, large
+  model_name: 'text_transformer_large'  # text_transformer_tiny, small, base, large
   load_checkpoint: false  # Set to true to resume training
   read_checkpoint: null  # Path to checkpoint if resuming
   pred_depth: 6  # Predictor depth (layers)

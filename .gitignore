@@ -1,0 +1,22 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtualenv / environment folders
+venv/
+env/
+.venv/
+env.bak/
+pyvenv.cfg
+
+# IDE/editor
+.vscode/
+.idea/
+
+# PyTorch checkpoints / model weights (ignore all .pth files)
+*.pth
+*.pt
+*.pth.tar
+*.ckpt
+

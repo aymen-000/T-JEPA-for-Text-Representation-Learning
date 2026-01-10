@@ -1,0 +1,74 @@
+======================================================================
+TEXT-JEPA FINE-TUNING TRAINING LOG
+======================================================================
+
+EXPERIMENT INFORMATION
+----------------------------------------------------------------------
+Start Time: 2026-01-10 02:04:29
+End Time: 2026-01-10 05:30:07
+Total Training Time: 3:25:38.843091
+Total Training Time (seconds): 12338.84s
+Total Training Time (minutes): 205.65m
+Total Training Time (hours): 3.43h
+
+MODEL CONFIGURATION
+----------------------------------------------------------------------
+Encoder Path: outputs/text_jepa/text_jepa_experiment-final.pth.tar
+Config Path: config/config.yaml
+Model Name: bert-base-uncased
+Vocabulary Size: 30522
+Embedding Dimension: 512
+Max Sequence Length: 512
+Depth (num layers): 6
+Number of Heads: 8
+Number of Classes: 4
+
+TRAINING HYPERPARAMETERS
+----------------------------------------------------------------------
+Batch Size: 64
+Number of Epochs: 5
+Classifier Learning Rate: 2e-05
+Encoder Learning Rate: 1e-05
+Weight Decay: 0.01
+Dropout: 0.2
+Optimizer: AdamW (differential learning rates)
+Loss Function: CrossEntropyLoss
+Device: cuda
+
+DATASET INFORMATION
+----------------------------------------------------------------------
+Dataset: AG News
+Train Samples: 120000
+Test Samples: 7600
+Train Batches: 1875
+Val Batches: 119
+
+TRAINING RESULTS
+----------------------------------------------------------------------
+Best Validation Accuracy: 85.61%
+
+SAVED FILES
+----------------------------------------------------------------------
+Model Checkpoint: outputs/text_jepa/finetuned_model_20260110_053007.pth
+CSV Results: outputs/text_jepa/finetune_results_20260110_020429.csv
+Training Log: outputs/text_jepa/training_log_20260110_020429.txt
+
+MODEL ARCHITECTURE
+----------------------------------------------------------------------
+TextFineTuneModel(
+  Encoder (Text-JEPA pretrained)
+  LayerNorm
+  Dropout(0.2)
+  Linear(512 -> 4)
+)
+
+NOTES
+----------------------------------------------------------------------
+- Encoder was fine-tuned (NOT frozen)
+- Used differential learning rates (encoder < classifier)
+- CLS token used for classification
+- All parameters trainable during fine-tuning
+
+======================================================================
+END OF TRAINING LOG
+======================================================================

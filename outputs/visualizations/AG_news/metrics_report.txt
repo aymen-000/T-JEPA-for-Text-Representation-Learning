@@ -1,0 +1,25 @@
+======================================================================
+EMBEDDING QUALITY METRICS REPORT
+======================================================================
+
+CLUSTERING METRICS
+----------------------------------------------------------------------
+Silhouette Score: 0.3530
+  - Range: -1 (worst) to +1 (best)
+  - Interpretation: Measures how similar samples are to their own cluster
+  - > 0.5: Good separation
+  - 0.25-0.5: Moderate separation
+  - < 0.25: Poor separation
+
+Davies-Bouldin Index: 1.1151
+  - Range: 0 (best) to infinity (worst)
+  - Interpretation: Ratio of within-cluster to between-cluster distances
+  - < 1.0: Good separation
+  - 1.0-2.0: Moderate separation
+  - > 2.0: Poor separation
+
+ANALYSIS
+----------------------------------------------------------------------
+○ GOOD: Model shows reasonable separation between classes
+
+======================================================================

@@ -129,7 +129,6 @@ def main(args, resume_preempt=False):
 
     # ---------------- MASK COLLATOR ----------------
     # For text, use a simpler mask collator or adapt TextMutiBlockMaskCollector
-    # Here we assume TextMutiBlockMaskCollector works with 1D sequences
     logger.info('Initializing mask collator...')
     mask_collator = TextMutiBlockMaskCollector(
         max_tokens=max_tokens,  # For text: sequence length
@@ -370,7 +369,7 @@ def main(args, resume_preempt=False):
                     h = target_encoder(tokens)
                     h = F.layer_norm(h, (h.size(-1),))
                     B = tokens.size(0)
-                    # Apply target masks
+                    # Apply target masks () 
                     h = apply_masks(h, masks_pred)
                     h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
 

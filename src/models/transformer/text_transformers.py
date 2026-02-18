@@ -154,7 +154,7 @@ class TransformerPredictor(nn.Module):
 
 class TextTransformer(nn.Module):
     """
-    Text Transformer Encoder (replaces VisionTransformer)
+    Text Transformer Encoder
     Standard Transformer architecture for text processing
     """
     

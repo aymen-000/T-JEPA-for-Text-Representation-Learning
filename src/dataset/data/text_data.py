@@ -18,7 +18,7 @@ class TextJEPA(Dataset):
     def __init__(
         self,
         dataset_name='wikimedia/wikipedia',
-        dataset_config='20220301.en',
+        dataset_config='20231101.en',
         split='train',
         text_field='text',          # 'text' for wiki/books, 'content' for c4
         transform=None,
@@ -26,7 +26,7 @@ class TextJEPA(Dataset):
     ):
         """
         :param dataset_name:   HuggingFace dataset repo name
-        :param dataset_config: Dataset config/subset (e.g. '20220301.en' for Wikipedia)
+        :param dataset_config: Dataset config/subset (e.g. '20231101.en' for Wikipedia)
         :param split:          'train' or 'validation'
         :param text_field:     Name of the text column in the dataset
         :param transform:      Optional callable (e.g. tokenizer)
@@ -77,7 +77,7 @@ class InterleavedTextJEPA(Dataset):
         max_length=None,
         seed=42,
     ):
-        wiki = load_dataset('wikimedia/wikipedia', '20220301.en', split=split)
+        wiki = load_dataset('wikimedia/wikipedia', '20231101.en', split=split)
         books = load_dataset('bookcorpusopen', 'plain_text', split=split)
 
         # Interleave with equal probability
@@ -113,7 +113,7 @@ def make_textjepa(
     collator=None,
     num_workers=4,
     dataset_name='wikimedia/wikipedia',
-    dataset_config='20220301.en',
+    dataset_config='20231101.en',
     split='train',
     text_field='text',
     transform=None,
@@ -125,7 +125,7 @@ def make_textjepa(
     Create DataLoader for Text-JEPA SSL pretraining.
 
     Recommended dataset choices:
-      - Wikipedia only:        dataset_name='wikimedia/wikipedia', dataset_config='20220301.en'
+      - Wikipedia only:        dataset_name='wikimedia/wikipedia', dataset_config='20231101.en'
       - C4 (large scale):      dataset_name='c4',                 dataset_config='en'
       - Wiki + Books mixed:    use_interleaved=True
     """
@@ -196,7 +196,7 @@ if __name__ == "__main__":
         fraction=0.01,           # 1% of Wikipedia ≈ 60k articles, plenty for a quick test
         max_length=512,          # character limit before tokenization; wiki articles are long
         dataset_name='wikimedia/wikipedia',
-        dataset_config='20220301.en',
+        dataset_config='20231101.en',
     )
 
     # --- Option B: Wikipedia + BookCorpus interleaved (BERT-style) ---

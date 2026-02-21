@@ -1,4 +1,3 @@
-import models.transformer.text_transformers as vit 
 import logging
 from src.help.utils import trunc_normal_
 import sys 

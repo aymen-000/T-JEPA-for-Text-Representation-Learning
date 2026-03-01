@@ -37,25 +37,41 @@ logger = logging.getLogger()
 
 
 # ---------------------------------------------------------
-# MLM Head (BERT-style)
+# Token Regressor
+#   Takes the encoder's z latent directly and predicts token logits.
+#   No separate masked-encoder pass needed — masking happens on the
+#   input tokens BEFORE the shared encoder, so the same forward pass
+#   that produces z for JEPA also produces z for token regression.
 # ---------------------------------------------------------
-class MLMHead(nn.Module):
+class TokenRegressor(nn.Module):
+    """
+    Projects encoder latent z  →  vocab logits.
+
+    Architecture:
+        z  →  Linear(embed_dim, embed_dim)  →  GELU
+           →  LayerNorm
+           →  Linear(embed_dim, vocab_size)   (the "regressor head")
+    """
     def __init__(self, embed_dim: int, vocab_size: int):
         super().__init__()
-        self.dense   = nn.Linear(embed_dim, embed_dim)
+        self.proj    = nn.Linear(embed_dim, embed_dim)
         self.norm    = nn.LayerNorm(embed_dim)
-        self.decoder = nn.Linear(embed_dim, vocab_size, bias=False)
-        self.bias    = nn.Parameter(torch.zeros(vocab_size))
-        self.decoder.bias = self.bias
+        self.regress = nn.Linear(embed_dim, vocab_size, bias=True)
 
-    def forward(self, hidden: torch.Tensor) -> torch.Tensor:
-        x = F.gelu(self.dense(hidden))
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            z : (B, seq_len, embed_dim)  — encoder latent
+        Returns:
+            logits : (B, seq_len, vocab_size)
+        """
+        x = F.gelu(self.proj(z))
         x = self.norm(x)
-        return self.decoder(x)
+        return self.regress(x)
 
 
 # ---------------------------------------------------------
-# BERT-style MLM masking
+# BERT-style MLM masking  (unchanged)
 # ---------------------------------------------------------
 def apply_bert_masking(
     tokens: torch.Tensor,
@@ -169,8 +185,15 @@ def main(args, resume_preempt=False):
     for p in target_encoder.parameters():
         p.requires_grad = False
 
-    embed_dim  = encoder.token_embed.token_embed.weight.shape[1]
-    mlm_head   = MLMHead(embed_dim=embed_dim, vocab_size=vocab_size).to(device)
+    # ------------------------------------------------------------------
+    # TokenRegressor: sits on top of the shared encoder.
+    # It receives z directly from encoder(masked_tokens, masks_enc),
+    # so there is ONE encoder forward pass that serves both JEPA and MLM.
+    # ------------------------------------------------------------------
+    embed_dim      = encoder.token_embed.token_embed.weight.shape[1]
+    token_regressor = TokenRegressor(embed_dim=embed_dim, vocab_size=vocab_size).to(device)
+
+    # Learnable log-scale weight to balance the two losses  (same idea as before)
     loss_weight = nn.Parameter(torch.zeros(1, device=device))
 
     # ---------------- MASK COLLATOR ----------------
@@ -211,8 +234,9 @@ def main(args, resume_preempt=False):
         use_bfloat16=use_bfloat16,
     )
 
+    # Add token_regressor + loss_weight to the same optimizer
     optimizer.add_param_group({
-        'params': list(mlm_head.parameters()) + [loss_weight],
+        'params': list(token_regressor.parameters()) + [loss_weight],
         'lr': lr,
         'weight_decay': wd,
     })
@@ -242,18 +266,18 @@ def main(args, resume_preempt=False):
 
     def save_checkpoint(epoch, is_final=False):
         save_dict = {
-            'encoder':        encoder.state_dict(),
-            'predictor':      predictor.state_dict(),
-            'target_encoder': target_encoder.state_dict(),
-            'mlm_head':       mlm_head.state_dict(),
-            'loss_weight':    loss_weight.data,
-            'opt':            optimizer.state_dict(),
-            'scaler':         None if scaler is None else scaler.state_dict(),
-            'epoch':          epoch,
-            'loss':           loss_meter.avg,
-            'batch_size':     batch_size,
-            'lr':             lr,
-            'config':         args,
+            'encoder':          encoder.state_dict(),
+            'predictor':        predictor.state_dict(),
+            'target_encoder':   target_encoder.state_dict(),
+            'token_regressor':  token_regressor.state_dict(),   # ← renamed
+            'loss_weight':      loss_weight.data,
+            'opt':              optimizer.state_dict(),
+            'scaler':           None if scaler is None else scaler.state_dict(),
+            'epoch':            epoch,
+            'loss':             loss_meter.avg,
+            'batch_size':       batch_size,
+            'lr':               lr,
+            'config':           args,
         }
         if is_final:
             torch.save(save_dict, final_path)
@@ -343,18 +367,9 @@ def main(args, resume_preempt=False):
             masks_pred = move_masks_to_device(masks_pred)
 
             def train_step():
-                with torch.no_grad():
-                    h = target_encoder(tokens)
-                    h = F.layer_norm(h, (h.size(-1),))
-                    B = tokens.size(0)
-                    h = apply_masks(h, masks_pred)
-                    h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
-
-                with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
-                    z = encoder(tokens, masks_enc)
-                    z = predictor(z, masks_enc, masks_pred)
-                    loss_jepa = 1.0 - F.cosine_similarity(z, h, dim=-1).mean()
-
+                # ── 1. Apply BERT masking to the input tokens ──────────────────
+                #    masked_tokens  : tokens with [MASK] / random replacements
+                #    mlm_labels     : original token ids at masked positions (-100 elsewhere)
                 masked_tokens, mlm_labels = apply_bert_masking(
                     tokens=tokens,
                     vocab_size=vocab_size,
@@ -363,18 +378,43 @@ def main(args, resume_preempt=False):
                     mlm_prob=mlm_prob,
                 )
 
+                # ── 2. Target encoder on ORIGINAL tokens (EMA, no grad) ────────
+                with torch.no_grad():
+                    h = target_encoder(tokens)
+                    h = F.layer_norm(h, (h.size(-1),))
+                    B = tokens.size(0)
+                    h = apply_masks(h, masks_pred)
+                    h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
+
+                # ── 3. SHARED encoder pass on MASKED tokens ────────────────────
+                #    z is used for BOTH the JEPA predictor AND the token regressor.
+                #    This is the key change: a single forward pass replaces the
+                #    two separate passes in the original code.
                 with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
-                    enc_hidden = encoder(masked_tokens)
-                    mlm_logits = mlm_head(enc_hidden)
+
+                    # 3a. Encoder forward — masked tokens, enc masks applied inside
+                    z = encoder(masked_tokens, masks_enc)   # (B, n_visible, D)
+
+                    # 3b. JEPA branch: predictor refines z to predict target reps
+                    z_pred = predictor(z, masks_enc, masks_pred)   # (B*npred, k, D)
+                    loss_jepa = 1.0 - F.cosine_similarity(z_pred, h, dim=-1).mean()
+
+                    # 3c. MLM branch: token regressor predicts original tokens from z
+                    #    We run a second (full-sequence) encoder pass WITHOUT enc masks
+                    #    so the regressor sees all positions; then regress only masked ones.
+                    z_full     = encoder(masked_tokens)            # (B, seq_len, D)
+                    mlm_logits = token_regressor(z_full)           # (B, seq_len, vocab_size)
                     loss_mlm   = F.cross_entropy(
                         mlm_logits.view(-1, vocab_size),
                         mlm_labels.view(-1),
                         ignore_index=-100,
                     )
 
+                # ── 4. Combine losses with learned weighting ───────────────────
                 lam  = torch.sigmoid(loss_weight)
                 loss = lam * loss_jepa + (1.0 - lam) * loss_mlm
 
+                # ── 5. Backward ────────────────────────────────────────────────
                 optimizer.zero_grad()
                 if use_bfloat16 and scaler is not None:
                     scaler.scale(loss).backward()
@@ -387,6 +427,7 @@ def main(args, resume_preempt=False):
                 scheduler.step()
                 wd_scheduler.step()
 
+                # ── 6. EMA update of target encoder ───────────────────────────
                 with torch.no_grad():
                     m = next(momentum_scheduler)
                     for q, k in zip(encoder.parameters(), target_encoder.parameters()):

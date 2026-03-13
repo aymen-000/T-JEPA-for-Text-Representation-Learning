@@ -37,21 +37,9 @@ logger = logging.getLogger()
 
 
 # ---------------------------------------------------------
-# Token Regressor
-#   Takes the encoder's z latent directly and predicts token logits.
-#   No separate masked-encoder pass needed — masking happens on the
-#   input tokens BEFORE the shared encoder, so the same forward pass
-#   that produces z for JEPA also produces z for token regression.
+# Token Regressor (used in both modes)
 # ---------------------------------------------------------
 class TokenRegressor(nn.Module):
-    """
-    Projects encoder latent z  →  vocab logits.
-
-    Architecture:
-        z  →  Linear(embed_dim, embed_dim)  →  GELU
-           →  LayerNorm
-           →  Linear(embed_dim, vocab_size)   (the "regressor head")
-    """
     def __init__(self, embed_dim: int, vocab_size: int):
         super().__init__()
         self.proj    = nn.Linear(embed_dim, embed_dim)
@@ -59,19 +47,13 @@ class TokenRegressor(nn.Module):
         self.regress = nn.Linear(embed_dim, vocab_size, bias=True)
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            z : (B, seq_len, embed_dim)  — encoder latent
-        Returns:
-            logits : (B, seq_len, vocab_size)
-        """
         x = F.gelu(self.proj(z))
         x = self.norm(x)
         return self.regress(x)
 
 
 # ---------------------------------------------------------
-# BERT-style MLM masking  (unchanged)
+# BERT-style MLM masking
 # ---------------------------------------------------------
 def apply_bert_masking(
     tokens: torch.Tensor,
@@ -116,6 +98,21 @@ def main(args, resume_preempt=False):
     r_file        = args['meta']['read_checkpoint']
     pred_depth    = args['meta']['pred_depth']
     pred_emb_dim  = args['meta']['pred_emb_dim']
+    # ------------------------------------------------------------------
+    # training_mode: "hybrid" → JEPA + MLM (original)
+    #                "mlm"    → pure BERT-style MLM only
+    # ------------------------------------------------------------------
+    training_mode = args['meta'].get('training_mode', 'hybrid')
+    assert training_mode in ('hybrid', 'mlm'), \
+        f"training_mode must be 'hybrid' or 'mlm', got '{training_mode}'"
+
+    print(f"\n{'='*60}")
+    print(f"  Training mode : {training_mode.upper()}")
+    if training_mode == 'hybrid':
+        print(f"  Losses        : JEPA (cosine) + MLM (cross-entropy)")
+    else:
+        print(f"  Losses        : MLM only (cross-entropy) — BERT baseline")
+    print(f"{'='*60}\n")
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -162,14 +159,22 @@ def main(args, resume_preempt=False):
     if load_model:
         load_path = os.path.join(folder, r_file) if r_file is not None else latest_path
 
-    csv_logger = CSVLogger(
-        os.path.join(folder, f'{tag}.csv'),
-        ('%d',   'epoch'),
-        ('%.5f', 'loss'),
-        ('%.5f', 'jepa_loss'),
-        ('%.5f', 'mlm_loss'),
-        ('%.4f', 'loss_lambda'),
-    )
+    # CSV columns differ slightly per mode
+    if training_mode == 'hybrid':
+        csv_logger = CSVLogger(
+            os.path.join(folder, f'{tag}.csv'),
+            ('%d',   'epoch'),
+            ('%.5f', 'loss'),
+            ('%.5f', 'jepa_loss'),
+            ('%.5f', 'mlm_loss'),
+            ('%.4f', 'loss_lambda'),
+        )
+    else:
+        csv_logger = CSVLogger(
+            os.path.join(folder, f'{tag}.csv'),
+            ('%d',   'epoch'),
+            ('%.5f', 'loss'),        # = mlm_loss in pure-MLM mode
+        )
 
     # ---------------- MODEL ----------------
     encoder, predictor = init_model(
@@ -181,23 +186,22 @@ def main(args, resume_preempt=False):
         max_seq_len=max_seq_len,
     )
 
-    target_encoder = copy.deepcopy(encoder)
-    for p in target_encoder.parameters():
-        p.requires_grad = False
+    # target encoder only needed for JEPA branch
+    if training_mode == 'hybrid':
+        target_encoder = copy.deepcopy(encoder)
+        for p in target_encoder.parameters():
+            p.requires_grad = False
+    else:
+        target_encoder = None   # not used in pure-MLM mode
 
-    # ------------------------------------------------------------------
-    # TokenRegressor: sits on top of the shared encoder.
-    # It receives z directly from encoder(masked_tokens, masks_enc),
-    # so there is ONE encoder forward pass that serves both JEPA and MLM.
-    # ------------------------------------------------------------------
-    embed_dim      = encoder.token_embed.token_embed.weight.shape[1]
+    embed_dim       = encoder.token_embed.token_embed.weight.shape[1]
     token_regressor = TokenRegressor(embed_dim=embed_dim, vocab_size=vocab_size).to(device)
 
-    # Learnable log-scale weight to balance the two losses  (same idea as before)
-    loss_weight = nn.Parameter(torch.zeros(1, device=device))
+    # learned loss weighting only needed for hybrid mode
+    loss_weight = nn.Parameter(torch.zeros(1, device=device)) if training_mode == 'hybrid' else None
 
     # ---------------- MASK COLLATOR ----------------
-    mask_collator = TextMutiBlockMaskCollector(
+    mask_collator = TextMutiBlockMaskCollator(
         max_tokens=max_tokens,
         nenc=num_enc_masks,
         npred=num_pred_masks,
@@ -234,12 +238,11 @@ def main(args, resume_preempt=False):
         use_bfloat16=use_bfloat16,
     )
 
-    # Add token_regressor + loss_weight to the same optimizer
-    optimizer.add_param_group({
-        'params': list(token_regressor.parameters()) + [loss_weight],
-        'lr': lr,
-        'weight_decay': wd,
-    })
+    # Add token_regressor (+ loss_weight for hybrid) to optimizer
+    extra_params = list(token_regressor.parameters())
+    if loss_weight is not None:
+        extra_params.append(loss_weight)
+    optimizer.add_param_group({'params': extra_params, 'lr': lr, 'weight_decay': wd})
 
     momentum_scheduler = (
         ema[0] + i * (ema[1] - ema[0]) / (ipe * num_epochs * ipe_scale)
@@ -268,17 +271,19 @@ def main(args, resume_preempt=False):
         save_dict = {
             'encoder':          encoder.state_dict(),
             'predictor':        predictor.state_dict(),
-            'target_encoder':   target_encoder.state_dict(),
-            'token_regressor':  token_regressor.state_dict(),   # ← renamed
-            'loss_weight':      loss_weight.data,
+            'token_regressor':  token_regressor.state_dict(),
+            'loss_weight':      loss_weight.data if loss_weight is not None else None,
             'opt':              optimizer.state_dict(),
             'scaler':           None if scaler is None else scaler.state_dict(),
             'epoch':            epoch,
             'loss':             loss_meter.avg,
             'batch_size':       batch_size,
             'lr':               lr,
+            'training_mode':    training_mode,
             'config':           args,
         }
+        if training_mode == 'hybrid' and target_encoder is not None:
+            save_dict['target_encoder'] = target_encoder.state_dict()
         if is_final:
             torch.save(save_dict, final_path)
 
@@ -289,9 +294,9 @@ def main(args, resume_preempt=False):
             sampler.set_epoch(epoch)
 
         loss_meter      = AverageMeter()
-        jepa_loss_meter = AverageMeter()
+        jepa_loss_meter = AverageMeter()   # only meaningful in hybrid mode
         mlm_loss_meter  = AverageMeter()
-        lambda_meter    = AverageMeter()
+        lambda_meter    = AverageMeter()   # only meaningful in hybrid mode
 
         for itr, (tokens, masks_enc, masks_pred) in enumerate(loader):
 
@@ -366,10 +371,10 @@ def main(args, resume_preempt=False):
             masks_enc  = move_masks_to_device(masks_enc)
             masks_pred = move_masks_to_device(masks_pred)
 
-            def train_step():
-                # ── 1. Apply BERT masking to the input tokens ──────────────────
-                #    masked_tokens  : tokens with [MASK] / random replacements
-                #    mlm_labels     : original token ids at masked positions (-100 elsewhere)
+            # ==============================================================
+            # HYBRID train step  (JEPA + MLM)
+            # ==============================================================
+            def train_step_hybrid():
                 masked_tokens, mlm_labels = apply_bert_masking(
                     tokens=tokens,
                     vocab_size=vocab_size,
@@ -378,7 +383,6 @@ def main(args, resume_preempt=False):
                     mlm_prob=mlm_prob,
                 )
 
-                # ── 2. Target encoder on ORIGINAL tokens (EMA, no grad) ────────
                 with torch.no_grad():
                     h = target_encoder(tokens)
                     h = F.layer_norm(h, (h.size(-1),))
@@ -386,35 +390,22 @@ def main(args, resume_preempt=False):
                     h = apply_masks(h, masks_pred)
                     h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
 
-                # ── 3. SHARED encoder pass on MASKED tokens ────────────────────
-                #    z is used for BOTH the JEPA predictor AND the token regressor.
-                #    This is the key change: a single forward pass replaces the
-                #    two separate passes in the original code.
                 with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
-
-                    # 3a. Encoder forward — masked tokens, enc masks applied inside
-                    z = encoder(masked_tokens, masks_enc)   # (B, n_visible, D)
-
-                    # 3b. JEPA branch: predictor refines z to predict target reps
-                    z_pred = predictor(z, masks_enc, masks_pred)   # (B*npred, k, D)
+                    z      = encoder(masked_tokens, masks_enc)
+                    z_pred = predictor(z, masks_enc, masks_pred)
                     loss_jepa = 1.0 - F.cosine_similarity(z_pred, h, dim=-1).mean()
 
-                    # 3c. MLM branch: token regressor predicts original tokens from z
-                    #    We run a second (full-sequence) encoder pass WITHOUT enc masks
-                    #    so the regressor sees all positions; then regress only masked ones.
-                    z_full     = encoder(masked_tokens)            # (B, seq_len, D)
-                    mlm_logits = token_regressor(z_full)           # (B, seq_len, vocab_size)
+                    z_full     = encoder(masked_tokens)
+                    mlm_logits = token_regressor(z_full)
                     loss_mlm   = F.cross_entropy(
                         mlm_logits.view(-1, vocab_size),
                         mlm_labels.view(-1),
                         ignore_index=-100,
                     )
 
-                # ── 4. Combine losses with learned weighting ───────────────────
                 lam  = torch.sigmoid(loss_weight)
                 loss = lam * loss_jepa + (1.0 - lam) * loss_mlm
 
-                # ── 5. Backward ────────────────────────────────────────────────
                 optimizer.zero_grad()
                 if use_bfloat16 and scaler is not None:
                     scaler.scale(loss).backward()
@@ -427,7 +418,6 @@ def main(args, resume_preempt=False):
                 scheduler.step()
                 wd_scheduler.step()
 
-                # ── 6. EMA update of target encoder ───────────────────────────
                 with torch.no_grad():
                     m = next(momentum_scheduler)
                     for q, k in zip(encoder.parameters(), target_encoder.parameters()):
@@ -435,7 +425,49 @@ def main(args, resume_preempt=False):
 
                 return loss.item(), loss_jepa.item(), loss_mlm.item(), lam.item()
 
-            loss, loss_jepa, loss_mlm, lam = gpu_timer(train_step)[0]
+            # ==============================================================
+            # PURE MLM train step  (BERT baseline — no JEPA, no EMA)
+            # ==============================================================
+            def train_step_mlm():
+                masked_tokens, mlm_labels = apply_bert_masking(
+                    tokens=tokens,
+                    vocab_size=vocab_size,
+                    mask_token_id=mask_token_id,
+                    pad_token_id=pad_token_id,
+                    mlm_prob=mlm_prob,
+                )
+
+                with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
+                    z_full     = encoder(masked_tokens)
+                    mlm_logits = token_regressor(z_full)
+                    loss = F.cross_entropy(
+                        mlm_logits.view(-1, vocab_size),
+                        mlm_labels.view(-1),
+                        ignore_index=-100,
+                    )
+
+                optimizer.zero_grad()
+                if use_bfloat16 and scaler is not None:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    optimizer.step()
+
+                scheduler.step()
+                wd_scheduler.step()
+                next(momentum_scheduler)   # keep scheduler in sync even though EMA unused
+
+                return loss.item(), 0.0, loss.item(), 0.0   # jepa=0, lam=0 for logging
+
+            # dispatch
+            if training_mode == 'hybrid':
+                result = gpu_timer(train_step_hybrid)[0]
+            else:
+                result = gpu_timer(train_step_mlm)[0]
+
+            loss, loss_jepa, loss_mlm, lam = result
 
             loss_meter.update(loss)
             jepa_loss_meter.update(loss_jepa)
@@ -447,21 +479,27 @@ def main(args, resume_preempt=False):
                 return
 
         # ── one print per epoch ───────────────────────────────────────────────
-        print(
-            f'Epoch [{epoch+1:3d}/{num_epochs}] '
-            f'loss={loss_meter.avg:.4f}  '
-            f'jepa={jepa_loss_meter.avg:.4f}  '
-            f'mlm={mlm_loss_meter.avg:.4f}  '
-            f'lambda={lambda_meter.avg:.4f}'
-        )
-
-        csv_logger.log(
-            epoch + 1,
-            loss_meter.avg,
-            jepa_loss_meter.avg,
-            mlm_loss_meter.avg,
-            lambda_meter.avg,
-        )
+        if training_mode == 'hybrid':
+            print(
+                f'Epoch [{epoch+1:3d}/{num_epochs}] '
+                f'loss={loss_meter.avg:.4f}  '
+                f'jepa={jepa_loss_meter.avg:.4f}  '
+                f'mlm={mlm_loss_meter.avg:.4f}  '
+                f'lambda={lambda_meter.avg:.4f}'
+            )
+            csv_logger.log(
+                epoch + 1,
+                loss_meter.avg,
+                jepa_loss_meter.avg,
+                mlm_loss_meter.avg,
+                lambda_meter.avg,
+            )
+        else:
+            print(
+                f'Epoch [{epoch+1:3d}/{num_epochs}] '
+                f'mlm_loss={loss_meter.avg:.4f}'
+            )
+            csv_logger.log(epoch + 1, loss_meter.avg)
 
         is_final = (epoch + 1 == num_epochs)
         save_checkpoint(epoch + 1, is_final=is_final)
@@ -474,16 +512,30 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Text-JEPA Training')
     parser.add_argument('--config', type=str, required=True)
     parser.add_argument('--resume', action='store_true')
-    args = parser.parse_args()
+    parser.add_argument(
+        '--mode',
+        type=str,
+        default=None,
+        choices=['hybrid', 'mlm'],
+        help=(
+            "Override training_mode from config. "
+            "'hybrid' = JEPA + MLM (default), "
+            "'mlm' = pure BERT-style MLM baseline."
+        ),
+    )
+    cli_args = parser.parse_args()
 
-    if not os.path.exists(args.config):
-        raise FileNotFoundError(f'Config file not found: {args.config}')
+    if not os.path.exists(cli_args.config):
+        raise FileNotFoundError(f'Config file not found: {cli_args.config}')
 
-    with open(args.config) as f:
+    with open(cli_args.config) as f:
         config = yaml.safe_load(f)
 
     for key in ['meta', 'data', 'mask', 'optimization', 'logging']:
         if key not in config:
             raise ValueError(f'Missing required config section: {key}')
 
-    main(config, resume_preempt=args.resume)
+    if cli_args.mode is not None:
+        config['meta']['training_mode'] = cli_args.mode
+
+    main(config, resume_preempt=cli_args.resume)

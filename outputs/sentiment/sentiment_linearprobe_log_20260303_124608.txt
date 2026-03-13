@@ -1,0 +1,75 @@
+======================================================================
+SENTIMENT ANALYSIS (SST-2) LINEAR PROBING LOG
+======================================================================
+
+EXPERIMENT INFORMATION
+----------------------------------------------------------------------
+Task:                          Binary Sentiment Classification (SST-2)
+Dataset:                       Stanford Sentiment Treebank v2
+Start Time:                    2026-03-03 12:46:08
+End Time:                      2026-03-03 13:01:52
+Total Training Time:           0:15:44.549664
+Total Training Time (seconds): 944.55s
+Total Training Time (minutes): 15.74m
+
+MODEL CONFIGURATION
+----------------------------------------------------------------------
+Encoder Path:       /kaggle/working/T-JEPA-for-Text-Representation-Learning/outputs/text_jepa/text_jepa_experiment-final.pth.tar
+Model Name:         bert-base-uncased
+Embedding Dim:      512
+Max Sequence Len:   512
+Depth (layers):     6
+Number of Heads:    8
+Number of Classes:  2 (Negative / Positive)
+Trainable Params:   2,050
+Frozen Params:      34,804,736
+
+TRAINING HYPERPARAMETERS
+----------------------------------------------------------------------
+Batch Size:         32
+Number of Epochs:   20
+Head Learning Rate: 0.01
+Weight Decay:       0.01
+Dropout:            0.2
+Optimizer:          AdamW (head only)
+Loss Function:      CrossEntropyLoss
+Device:             cuda
+
+DATASET INFORMATION
+----------------------------------------------------------------------
+Train Samples:      67349
+Validation Samples: 872
+Train Batches:      2105
+Val Batches:        28
+
+TRAINING RESULTS
+----------------------------------------------------------------------
+Best Validation Accuracy: 64.56%
+
+SAVED FILES
+----------------------------------------------------------------------
+Head Checkpoint:    outputs/sentiment/sentiment_linearprobe_20260303_130152.pth
+CSV Results:        outputs/sentiment/sentiment_linearprobe_results_20260303_124608.csv
+Training Log:       outputs/sentiment/sentiment_linearprobe_log_20260303_124608.txt
+
+MODEL ARCHITECTURE
+----------------------------------------------------------------------
+TextLinearProbeModel(
+  Encoder (Text-JEPA pretrained, FROZEN)
+  LayerNorm                  ← trainable
+  Dropout(0.2)               ← trainable
+  Linear(512 -> 2)       ← trainable
+)
+
+NOTES
+----------------------------------------------------------------------
+- Encoder is FROZEN throughout training
+- Only LayerNorm + Linear head are trained
+- Encoder kept in eval() mode to disable dropout/batchnorm updates
+- torch.no_grad() wraps encoder forward pass for efficiency
+- CLS token used for classification
+- encoder_lr argument removed (encoder not updated)
+
+======================================================================
+END OF TRAINING LOG
+======================================================================

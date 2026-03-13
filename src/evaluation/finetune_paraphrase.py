@@ -3,6 +3,8 @@ Text-JEPA Fine-tuning on Paraphrase Detection
 
 Binary classification: determine if two sentences are paraphrases.
 Can use either QQP (Quora Question Pairs) or MRPC (Microsoft Research Paraphrase Corpus)
+
+Encoder is FROZEN - only the MLP head is trained.
 """
 
 import torch
@@ -26,35 +28,41 @@ from src.help.schedulers import init_model
 # Fine-tuning Model for Sentence-Pair Tasks
 # -------------------------------------------------------
 class SentencePairModel(nn.Module):
-    def __init__(self, encoder, embed_dim, num_classes):
+    def __init__(self, encoder, embed_dim, num_classes, pad_id=0):
         super().__init__()
         self.encoder = encoder
+        self.pad_id = pad_id
         self.norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(0.2)
         # Concatenate + element-wise difference + element-wise product
         self.classifier = nn.Linear(embed_dim * 4, num_classes)
 
+        # Freeze the encoder — only MLP head is trained
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+
     def forward(self, sent1_ids, sent2_ids):
-        # Encode both sentences
-        sent1_feats = self.encoder(sent1_ids)
-        sent2_feats = self.encoder(sent2_ids)
-        
+        # Encode both sentences (no grad since encoder is frozen)
+        with torch.no_grad():
+            sent1_feats = self.encoder(sent1_ids)   # [B, L, D]
+            sent2_feats = self.encoder(sent2_ids)   # [B, L, D]
+
         # Get CLS tokens
         sent1_cls = sent1_feats[:, 0]
         sent2_cls = sent2_feats[:, 0]
-        
+
         # Normalize
         sent1_cls = self.norm(sent1_cls)
         sent2_cls = self.norm(sent2_cls)
-        
+
         # Rich interaction features
         diff = torch.abs(sent1_cls - sent2_cls)
         prod = sent1_cls * sent2_cls
-        
+
         # Concatenate all features
         combined = torch.cat([sent1_cls, sent2_cls, diff, prod], dim=-1)
         combined = self.dropout(combined)
-        
+
         return self.classifier(combined)
 
 
@@ -75,20 +83,20 @@ class CSVLogger:
         with open(self.csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(
-                ["epoch", "train_loss", "train_acc", "val_acc", 
+                ["epoch", "train_loss", "train_acc", "val_acc",
                  "val_f1", "val_precision", "val_recall", "is_best"]
             )
 
         print(f"✓ CSV log created at: {self.csv_path}")
         print(f"✓ Text log created at: {self.txt_path}")
 
-    def log(self, epoch, train_loss, train_acc, val_acc, val_f1, 
+    def log(self, epoch, train_loss, train_acc, val_acc, val_f1,
             val_precision, val_recall, is_best):
         with open(self.csv_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(
-                [epoch, f"{train_loss:.4f}", f"{train_acc:.2f}", 
-                 f"{val_acc:.2f}", f"{val_f1:.4f}", 
+                [epoch, f"{train_loss:.4f}", f"{train_acc:.2f}",
+                 f"{val_acc:.2f}", f"{val_f1:.4f}",
                  f"{val_precision:.4f}", f"{val_recall:.4f}", int(is_best)]
             )
 
@@ -105,7 +113,7 @@ def get_model_name_from_checkpoint(checkpoint):
 
 
 # -------------------------------------------------------
-# Fine-tuning on Paraphrase Detection
+# Linear Probing on Paraphrase Detection
 # -------------------------------------------------------
 def finetune_paraphrase(
     encoder_path,
@@ -115,7 +123,6 @@ def finetune_paraphrase(
     batch_size=32,
     num_epochs=15,
     lr=2e-5,
-    encoder_lr=1e-5,
     device="cuda",
     output_dir="outputs/paraphrase",
 ):
@@ -161,14 +168,20 @@ def finetune_paraphrase(
     )
 
     encoder.load_state_dict(checkpoint["encoder"])
-    encoder.train()
+    encoder.eval()  # Frozen encoder stays in eval mode always
 
-    # Fine-tuning model
+    # Model with frozen encoder
     model = SentencePairModel(
         encoder=encoder,
         embed_dim=embed_dim,
         num_classes=2,  # Binary: paraphrase or not
+        pad_id=tokenizer.pad_token_id,
     ).to(device)
+
+    # Count trainable vs frozen params
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    frozen = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+    print(f"Trainable parameters: {trainable:,}  |  Frozen parameters: {frozen:,}")
 
     # Load dataset
     print(f"Loading {dataset_name.upper()} dataset...")
@@ -203,7 +216,7 @@ def finetune_paraphrase(
 
     dataset = dataset.map(tokenize, batched=True)
     dataset.set_format(
-        type="torch", 
+        type="torch",
         columns=["sent1_ids", "sent2_ids", "labels"]
     )
 
@@ -214,22 +227,24 @@ def finetune_paraphrase(
         dataset["validation"], batch_size=batch_size
     )
 
-    # Optimizer
+    # Optimizer: head only (encoder is frozen)
     optimizer = torch.optim.AdamW([
-        {'params': model.encoder.parameters(), 'lr': encoder_lr},
-        {'params': model.norm.parameters(), 'lr': lr},
-        {'params': model.classifier.parameters(), 'lr': lr},
-    ], weight_decay=0.01)
+        {'params': model.norm.parameters()},
+        {'params': model.classifier.parameters()},
+    ], lr=lr, weight_decay=0.01)
 
     criterion = nn.CrossEntropyLoss()
 
-    print(f"Fine-tuning on {dataset_name.upper()} with encoder_lr={encoder_lr}, classifier_lr={lr}")
+    print(f"Linear probing {dataset_name.upper()} with head lr={lr} (encoder is frozen)")
 
     # Training
     best_f1 = 0.0
 
     for epoch in range(num_epochs):
-        model.train()
+        model.encoder.eval()       # Always keep encoder in eval
+        model.norm.train()
+        model.classifier.train()
+
         correct = total = 0
         loss_sum = 0.0
 
@@ -264,7 +279,7 @@ def finetune_paraphrase(
 
                 logits = model(sent1_ids, sent2_ids)
                 preds = logits.argmax(dim=1)
-                
+
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
@@ -304,9 +319,12 @@ def finetune_paraphrase(
         output_dir, f"paraphrase_{dataset_name}_model_{timestamp}.pth"
     )
 
+    # Only save the head (encoder is frozen, not needed)
     torch.save({
-        'model_state_dict': model.state_dict(),
-        'encoder_state_dict': model.encoder.state_dict(),
+        'head_state_dict': {
+            'norm': model.norm.state_dict(),
+            'classifier': model.classifier.state_dict(),
+        },
         'best_f1': best_f1,
         'num_classes': 2,
         'embed_dim': embed_dim,
@@ -314,12 +332,12 @@ def finetune_paraphrase(
         'dataset': dataset_name,
     }, model_save_path)
 
-    print(f"✓ Model saved to: {model_save_path}")
+    print(f"✓ Linear probe head saved to: {model_save_path}")
 
     # Save training log
     with open(logger.txt_path, "w") as f:
         f.write("=" * 70 + "\n")
-        f.write(f"PARAPHRASE DETECTION ({dataset_name.upper()}) FINE-TUNING LOG\n")
+        f.write(f"PARAPHRASE DETECTION ({dataset_name.upper()}) LINEAR PROBING LOG\n")
         f.write("=" * 70 + "\n\n")
 
         f.write("EXPERIMENT INFORMATION\n")
@@ -341,18 +359,23 @@ def finetune_paraphrase(
         f.write(f"Encoder Path: {encoder_path}\n")
         f.write(f"Model Name: {model_name}\n")
         f.write(f"Embedding Dimension: {embed_dim}\n")
-        f.write(f"Architecture: Dual-encoder with rich interactions\n")
-        f.write(f"  - Concatenation of both embeddings\n")
+        f.write(f"Architecture: Dual-encoder with rich interactions (FROZEN)\n")
+        f.write(f"  - Concatenation of both CLS embeddings\n")
         f.write(f"  - Element-wise difference\n")
         f.write(f"  - Element-wise product\n")
-        f.write(f"Number of Classes: 2\n\n")
+        f.write(f"Number of Classes: 2\n")
+        f.write(f"Trainable Params: {trainable:,}\n")
+        f.write(f"Frozen Params:    {frozen:,}\n\n")
 
         f.write("TRAINING HYPERPARAMETERS\n")
         f.write("-" * 70 + "\n")
         f.write(f"Batch Size: {batch_size}\n")
         f.write(f"Number of Epochs: {num_epochs}\n")
-        f.write(f"Classifier Learning Rate: {lr}\n")
-        f.write(f"Encoder Learning Rate: {encoder_lr}\n\n")
+        f.write(f"Head Learning Rate: {lr}\n")
+        f.write(f"Weight Decay: 0.01\n")
+        f.write(f"Dropout: 0.2\n")
+        f.write(f"Optimizer: AdamW (head only)\n")
+        f.write(f"Loss Function: CrossEntropyLoss\n\n")
 
         f.write("DATASET INFORMATION\n")
         f.write("-" * 70 + "\n")
@@ -363,29 +386,45 @@ def finetune_paraphrase(
         f.write("-" * 70 + "\n")
         f.write(f"Best F1 Score: {best_f1:.4f}\n\n")
 
+        f.write("MODEL ARCHITECTURE\n")
+        f.write("-" * 70 + "\n")
+        f.write("SentencePairModel(\n")
+        f.write("  Encoder x2 (Text-JEPA pretrained, FROZEN)\n")
+        f.write("  LayerNorm                        ← trainable\n")
+        f.write("  Dropout(0.2)                     ← trainable\n")
+        f.write(f"  Linear({embed_dim * 4} -> 2)          ← trainable\n")
+        f.write(")\n\n")
+
         f.write("NOTES\n")
         f.write("-" * 70 + "\n")
-        f.write("- Rich feature interactions for semantic similarity\n")
-        f.write("- F1 score is the primary metric for imbalanced data\n")
-        f.write("- Precision and recall tracked for detailed analysis\n\n")
+        f.write("- Encoder is FROZEN throughout training\n")
+        f.write("- Only LayerNorm + Linear classifier are trained\n")
+        f.write("- Encoder kept in eval() mode to disable dropout/batchnorm updates\n")
+        f.write("- torch.no_grad() wraps encoder forward pass for efficiency\n")
+        f.write("- CLS token used from both sentence encodings\n")
+        f.write("- Rich interactions: [s1; s2; |s1-s2|; s1*s2]\n")
+        f.write("- F1 score is the primary metric\n\n")
 
+        f.write("=" * 70 + "\n")
+        f.write("END OF TRAINING LOG\n")
         f.write("=" * 70 + "\n")
 
     print(f"✓ Training log saved to: {logger.txt_path}")
+    print(f"✓ Total training time: {total_time}")
+
     return best_f1
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Paraphrase Detection Fine-tuning")
+    parser = argparse.ArgumentParser("Paraphrase Detection Linear Probing")
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--dataset", type=str, default="mrpc", 
+    parser.add_argument("--dataset", type=str, default="mrpc",
                         choices=["mrpc", "qqp"])
     parser.add_argument("--model_name", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--lr", type=float, default=2e-5)
-    parser.add_argument("--encoder_lr", type=float, default=1e-5)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--output_dir", type=str, default="outputs/paraphrase")
 
@@ -399,7 +438,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         num_epochs=args.epochs,
         lr=args.lr,
-        encoder_lr=args.encoder_lr,
         device=args.device,
         output_dir=args.output_dir,
     )

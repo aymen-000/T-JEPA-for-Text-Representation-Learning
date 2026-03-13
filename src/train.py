@@ -201,7 +201,7 @@ def main(args, resume_preempt=False):
     loss_weight = nn.Parameter(torch.zeros(1, device=device)) if training_mode == 'hybrid' else None
 
     # ---------------- MASK COLLATOR ----------------
-    mask_collator = TextMutiBlockMaskCollator(
+    mask_collator = TextMutiBlockMaskCollector(
         max_tokens=max_tokens,
         nenc=num_enc_masks,
         npred=num_pred_masks,

@@ -1,0 +1,76 @@
+======================================================================
+TEXT-JEPA LINEAR PROBING TRAINING LOG
+======================================================================
+
+EXPERIMENT INFORMATION
+----------------------------------------------------------------------
+Start Time:                    2026-03-13 17:11:41
+End Time:                      2026-03-13 19:20:14
+Total Training Time:           2:08:33.353889
+Total Training Time (seconds): 7713.35s
+Total Training Time (minutes): 128.56m
+Total Training Time (hours):   2.14h
+
+MODEL CONFIGURATION
+----------------------------------------------------------------------
+Encoder Path:       /kaggle/input/models/aimenboukhari/t-jepa-model/pytorch/default/1/text_jepa_experiment-final.pth.tar
+Config Path:        /kaggle/working/config.yaml
+Model Name:         bert-base-uncased
+Vocabulary Size:    30522
+Embedding Dim:      512
+Max Sequence Len:   512
+Depth (layers):     6
+Number of Heads:    8
+Number of Classes:  4
+Trainable Params:   3,076
+Frozen Params:      34,804,736
+
+TRAINING HYPERPARAMETERS
+----------------------------------------------------------------------
+Batch Size:         64
+Number of Epochs:   90
+Head Learning Rate: 0.001
+Weight Decay:       0.01
+Dropout:            0.2
+Optimizer:          AdamW (head only)
+Loss Function:      CrossEntropyLoss
+Device:             cuda
+
+DATASET INFORMATION
+----------------------------------------------------------------------
+Dataset:            AG News
+Train Samples:      120000
+Test Samples:       7600
+Train Batches:      1875
+Val Batches:        119
+
+TRAINING RESULTS
+----------------------------------------------------------------------
+Best Validation Accuracy: 75.59%
+
+SAVED FILES
+----------------------------------------------------------------------
+Head Checkpoint:    outputs/text_jepa/linearprobe_model_20260313_192014.pth
+CSV Results:        outputs/text_jepa/linearprobe_results_20260313_171141.csv
+Training Log:       outputs/text_jepa/training_log_20260313_171141.txt
+
+MODEL ARCHITECTURE
+----------------------------------------------------------------------
+TextLinearProbeModel(
+  Encoder (Text-JEPA pretrained, FROZEN)
+  LayerNorm                  ← trainable
+  Dropout(0.2)               ← trainable
+  Linear(512 -> 4)  ← trainable
+)
+
+NOTES
+----------------------------------------------------------------------
+- Encoder is FROZEN throughout training
+- Only LayerNorm + Linear head are trained
+- Encoder kept in eval() mode to disable dropout/batchnorm updates
+- torch.no_grad() wraps encoder forward pass for efficiency
+- CLS token used for classification
+
+======================================================================
+END OF TRAINING LOG
+======================================================================

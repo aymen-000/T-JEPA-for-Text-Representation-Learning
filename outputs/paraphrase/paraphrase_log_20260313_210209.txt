@@ -1,0 +1,69 @@
+======================================================================
+PARAPHRASE DETECTION (MRPC) LINEAR PROBING LOG
+======================================================================
+
+EXPERIMENT INFORMATION
+----------------------------------------------------------------------
+Task: Paraphrase Detection
+Dataset: Microsoft Research Paraphrase Corpus (MRPC)
+Classes: 2 (Not Paraphrase, Paraphrase)
+Start Time: 2026-03-13 21:02:09
+End Time: 2026-03-13 21:10:26
+Total Training Time: 0:08:17.043208
+Total Training Time (seconds): 497.04s
+Total Training Time (minutes): 8.28m
+
+MODEL CONFIGURATION
+----------------------------------------------------------------------
+Encoder Path: /kaggle/input/models/aimenboukhari/t-jepa-model/pytorch/default/1/text_jepa_experiment-final.pth.tar
+Model Name: bert-base-uncased
+Embedding Dimension: 512
+Architecture: Dual-encoder with rich interactions (FROZEN)
+  - Concatenation of both CLS embeddings
+  - Element-wise difference
+  - Element-wise product
+Number of Classes: 2
+Trainable Params: 5,122
+Frozen Params:    34,804,736
+
+TRAINING HYPERPARAMETERS
+----------------------------------------------------------------------
+Batch Size: 32
+Number of Epochs: 90
+Head Learning Rate: 0.001
+Weight Decay: 0.01
+Dropout: 0.2
+Optimizer: AdamW (head only)
+Loss Function: CrossEntropyLoss
+
+DATASET INFORMATION
+----------------------------------------------------------------------
+Train Samples: 3668
+Validation Samples: 408
+
+TRAINING RESULTS
+----------------------------------------------------------------------
+Best F1 Score: 0.8346
+
+MODEL ARCHITECTURE
+----------------------------------------------------------------------
+SentencePairModel(
+  Encoder x2 (Text-JEPA pretrained, FROZEN)
+  LayerNorm                        ← trainable
+  Dropout(0.2)                     ← trainable
+  Linear(2048 -> 2)          ← trainable
+)
+
+NOTES
+----------------------------------------------------------------------
+- Encoder is FROZEN throughout training
+- Only LayerNorm + Linear classifier are trained
+- Encoder kept in eval() mode to disable dropout/batchnorm updates
+- torch.no_grad() wraps encoder forward pass for efficiency
+- CLS token used from both sentence encodings
+- Rich interactions: [s1; s2; |s1-s2|; s1*s2]
+- F1 score is the primary metric
+
+======================================================================
+END OF TRAINING LOG
+======================================================================

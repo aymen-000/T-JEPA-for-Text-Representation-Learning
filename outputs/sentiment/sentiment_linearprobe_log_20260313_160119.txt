@@ -6,15 +6,15 @@ EXPERIMENT INFORMATION
 ----------------------------------------------------------------------
 Task:                          Binary Sentiment Classification (SST-2)
 Dataset:                       Stanford Sentiment Treebank v2
-Start Time:                    2026-03-03 12:46:08
-End Time:                      2026-03-03 13:01:52
-Total Training Time:           0:15:44.549664
-Total Training Time (seconds): 944.55s
-Total Training Time (minutes): 15.74m
+Start Time:                    2026-03-13 16:01:19
+End Time:                      2026-03-13 17:11:34
+Total Training Time:           1:10:14.710293
+Total Training Time (seconds): 4214.71s
+Total Training Time (minutes): 70.25m
 
 MODEL CONFIGURATION
 ----------------------------------------------------------------------
-Encoder Path:       /kaggle/working/T-JEPA-for-Text-Representation-Learning/outputs/text_jepa/text_jepa_experiment-final.pth.tar
+Encoder Path:       /kaggle/input/models/aimenboukhari/t-jepa-model/pytorch/default/1/text_jepa_experiment-final.pth.tar
 Model Name:         bert-base-uncased
 Embedding Dim:      512
 Max Sequence Len:   512
@@ -27,8 +27,8 @@ Frozen Params:      34,804,736
 TRAINING HYPERPARAMETERS
 ----------------------------------------------------------------------
 Batch Size:         32
-Number of Epochs:   20
-Head Learning Rate: 0.01
+Number of Epochs:   90
+Head Learning Rate: 0.001
 Weight Decay:       0.01
 Dropout:            0.2
 Optimizer:          AdamW (head only)
@@ -44,13 +44,13 @@ Val Batches:        28
 
 TRAINING RESULTS
 ----------------------------------------------------------------------
-Best Validation Accuracy: 64.56%
+Best Validation Accuracy: 67.55%
 
 SAVED FILES
 ----------------------------------------------------------------------
-Head Checkpoint:    outputs/sentiment/sentiment_linearprobe_20260303_130152.pth
-CSV Results:        outputs/sentiment/sentiment_linearprobe_results_20260303_124608.csv
-Training Log:       outputs/sentiment/sentiment_linearprobe_log_20260303_124608.txt
+Head Checkpoint:    outputs/sentiment/sentiment_linearprobe_20260313_171134.pth
+CSV Results:        outputs/sentiment/sentiment_linearprobe_results_20260313_160119.csv
+Training Log:       outputs/sentiment/sentiment_linearprobe_log_20260313_160119.txt
 
 MODEL ARCHITECTURE
 ----------------------------------------------------------------------

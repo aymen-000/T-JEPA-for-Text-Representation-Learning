@@ -409,13 +409,14 @@ def visualize_embeddings(
     
     # Load dataset
     print("Loading AG News dataset...")
-    dataset = load_dataset("ag_news")
+    dataset = load_dataset("glue", "sst2")
     
-    class_names = ["World", "Sports", "Business", "Sci/Tech"]
+    
+    class_names = ["Negative", "Positive"]
     
     def tokenize(batch):
         out = tokenizer(
-            batch["text"],
+            batch["sentence"],
             truncation=True,
             padding="max_length",
             max_length=config_yaml["mask"]["max_tokens"],
@@ -426,7 +427,7 @@ def visualize_embeddings(
     dataset = dataset.map(tokenize, batched=True)
     dataset.set_format(type="torch", columns=["input_ids", "labels"])
     
-    test_loader = DataLoader(dataset["test"], batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(dataset["validation"], batch_size=batch_size, shuffle=False)
     
     # Extract embeddings
     embeddings, labels = extract_embeddings(model, test_loader, device, max_samples)

@@ -1,7 +1,0 @@
-[project]
-name = "i-jepa"
-version = "0.1.0"
-description = "Implementation of I-JEPA from scratch"
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = []

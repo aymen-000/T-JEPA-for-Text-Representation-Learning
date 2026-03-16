@@ -19,8 +19,6 @@ Inspired by:
   - Roy & Vetrov (2007)   The Effective Rank
   - Ethayarajh (2019)     How Contextual are Contextualized Word Representations?
   - Garrido et al. (2023) Duality Between Contrastive and Non-Contrastive SSL
-
-
 """
 
 import argparse

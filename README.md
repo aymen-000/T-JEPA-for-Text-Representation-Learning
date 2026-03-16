@@ -30,8 +30,9 @@ Masked Tokens ──► Shared Encoder (masks_enc) ──► Predictor ──►
                                     λ = sigmoid(w)  ← learnable
 ```
 
-The shared encoder is used for **both branches** — there is no separate BERT model. Both objectives share gradient signals through the same encoder weights.
+The shared encoder is used for **both branches** — there is no separate BERT-style model. Both objectives share gradient signals through the same encoder weights.
 
+![archtacture](/outputs/pred_recon.png)
 ---
 
 ## Repository Structure
@@ -181,16 +182,6 @@ The hybrid encoder is consistently **5–10× more uniform** than MLM-only acros
 
 All results are saved under `outputs/`:
 
-| Path | Content |
-|------|---------|
-| `outputs/text_jepa/` | Hybrid model checkpoint |
-| `outputs/text_jepa_mlm/` | MLM-only baseline checkpoint |
-| `outputs/analysis/` | Representation analysis figures and `results_summary.json` |
-| `outputs/sentiment/` | SST-2 linear probe logs |
-| `outputs/paraphrase/` | MRPC / QQP linear probe logs |
-| `outputs/mnli/` | MNLI linear probe logs |
-| `outputs/sts-b/` | STS-B linear probe logs |
-
 ---
 
 ## Citation
@@ -199,7 +190,7 @@ All results are saved under `outputs/`:
 @article{boukhari2025predictreconstruct,
   title   = {Predict and Reconstruct: Joint Objectives for
              Self-Supervised Language Representation Learning},
-  author  = {Boukhari, Aimen},
+  author  = {Boukhari Aimen},
   journal = {arXiv preprint},
   year    = {2025}
 }
@@ -210,4 +201,3 @@ All results are saved under `outputs/`:
 ## Acknowledgements
 
 Architecture inspired by [I-JEPA](https://github.com/facebookresearch/ijepa) (Assran et al., CVPR 2023).  
-Representation metrics follow [Wang & Isola (ICML 2020)](https://arxiv.org/abs/2005.10242) and [Roy & Vetrov (EUSIPCO 2007)](https://ieeexplore.ieee.org/document/4362781).

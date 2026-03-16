@@ -1,0 +1,24 @@
+======================================================================
+STS-B LINEAR PROBING LOG
+======================================================================
+
+Task              : Semantic Textual Similarity (regression)
+Dataset           : GLUE STS-B  (scores 0–5)
+Primary Metrics   : Pearson r  &  Spearman ρ
+Start Time        : 2026-03-15 23:01:42
+End Time          : 2026-03-15 23:03:24
+Total Time        : 0:01:41.617389
+
+Encoder Path      : /kaggle/input/models/aimenboukhari/t-jepa-model/pytorch/default/1/text_jepa_experiment-final.pth.tar
+Embedding Dim     : 512
+Trainable Params  : 1,026
+Frozen Params     : 34,804,736
+
+Batch Size        : 128
+Epochs            : 10
+LR                : 0.001
+Loss              : MSELoss
+Architecture      : cosine_sim(u,v) → scale*x + bias → [0,5]
+
+BEST SPEARMAN ρ   : 0.2812
+======================================================================

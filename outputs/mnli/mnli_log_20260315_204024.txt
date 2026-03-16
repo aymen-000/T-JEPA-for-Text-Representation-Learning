@@ -1,0 +1,22 @@
+======================================================================
+MNLI LINEAR PROBING LOG
+======================================================================
+
+Task              : Multi-Genre NLI (3-class)
+Dataset           : GLUE MNLI (matched validation)
+Classes           : entailment / neutral / contradiction
+Start Time        : 2026-03-15 20:40:24
+End Time          : 2026-03-15 22:51:54
+Total Time        : 2:11:30.325001
+
+Encoder Path      : /kaggle/input/models/aimenboukhari/t-jepa-model/pytorch/default/1/text_jepa_experiment-final.pth.tar
+Embedding Dim     : 512
+Trainable Params  : 7,171
+Frozen Params     : 34,804,736
+
+Batch Size        : 128
+Epochs            : 15
+LR                : 0.001
+
+BEST VAL ACC      : 50.82%
+======================================================================

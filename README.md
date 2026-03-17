@@ -1,7 +1,7 @@
 # Predict and Reconstruct
 ### Joint Objectives for Self-Supervised Language Representation Learning
 
-> **Paper:** [Predict and Reconstruct: Joint Objectives for Self-Supervised Language Representation Learning](10.13140/RG.2.2.17818.30404)  
+> **Paper:** [Predict and Reconstruct: Joint Objectives for Self-Supervised Language Representation Learning](https://www.researchgate.net/publication/361781221_Predict_and_Reconstruct_Joint_Objectives_for_Self-Supervised_Language_Representation_Learning) 
 > **Author:** Aimen Boukhari — École Nationale Supérieure d'Informatique (ESI), Algiers
 
 ---

@@ -1,7 +1,7 @@
 # Predict and Reconstruct
 ### Joint Objectives for Self-Supervised Language Representation Learning
 
-> **Paper:** [Predict and Reconstruct: Joint Objectives for Self-Supervised Language Representation Learning](https://arxiv.org/abs/XXXX.XXXXX)  
+> **Paper:** [Predict and Reconstruct: Joint Objectives for Self-Supervised Language Representation Learning](10.13140/RG.2.2.17818.30404)  
 > **Author:** Aimen Boukhari — École Nationale Supérieure d'Informatique (ESI), Algiers
 
 ---
@@ -191,7 +191,6 @@ All results are saved under `outputs/`:
   title   = {Predict and Reconstruct: Joint Objectives for
              Self-Supervised Language Representation Learning},
   author  = {Boukhari Aimen},
-  journal = {arXiv preprint},
   year    = {2025}
 }
 ```

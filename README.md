@@ -191,7 +191,7 @@ All results are saved under `outputs/`:
   title   = {Predict and Reconstruct: Joint Objectives for
              Self-Supervised Language Representation Learning},
   author  = {Boukhari Aimen},
-  year    = {2025}
+  year    = {2026}
 }
 ```
 

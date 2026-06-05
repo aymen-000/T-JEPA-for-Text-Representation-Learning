@@ -187,11 +187,14 @@ All results are saved under `outputs/`:
 ## Citation
 
 ```bibtex
-@article{boukhari2025predictreconstruct,
-  title   = {Predict and Reconstruct: Joint Objectives for
-             Self-Supervised Language Representation Learning},
-  author  = {Boukhari Aimen},
-  year    = {2026}
+@misc{boukhari2026predictreconstructjointobjectives,
+      title={Predict and Reconstruct: Joint Objectives for Self-Supervised Language Representation Learning}, 
+      author={Aimen Boukhari},
+      year={2026},
+      eprint={2606.05173},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2606.05173}, 
 }
 ```
 
